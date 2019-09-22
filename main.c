@@ -1,8 +1,7 @@
 #include <stdint.h>
-
 #include <genesis.h>
 
-extern uint8_t asmStart,asmEnd;
+extern uint8_t subCodeStart,subCodeEnd;
 
 volatile uint16_t* MAIN_RESETHALT    =(volatile uint16_t*)0x0A12000;
 volatile uint16_t* MAIN_MEMMODE      =(volatile uint16_t*)0x0A12002;
@@ -50,12 +49,13 @@ bool read128k(uint8_t* x,uint8_t initv){
 */
 
 
-//#define OFFSET 0
-#define OFFSET 0x400000
+#define OFFSET 0
+//#define OFFSET 0x400000
 
 int main()
 {
   char buffer[32];
+
   
   for (uint8_t bank=0;bank<4;bank++){
     *MAIN_MEMMODE=(bank<<6)|RET;
@@ -101,25 +101,38 @@ int main()
   VDP_drawText("got bus", 19, 7);
 
   *MAIN_MEMMODE=(0<<6)|RET;
-  memcpy((void*)(OFFSET+0x20000),&asmStart,&asmEnd-&asmStart);
-
-  /*uint8_t* readBack=(uint8_t*)(OFFSET+0x20000);
-
-  for (int i=0;i<64;i++){
-    sprintf(buffer,"%02x ",*readBack);
-    readBack++;
-    VDP_drawText(buffer, 3*(i%8), i/8);
-   
-    }*/
-  
+  memcpy((void*)(OFFSET+0x20000),&subCodeStart,&subCodeEnd-&subCodeStart);
   
   *MAIN_MEMMODE= DMNA;
   *MAIN_RESETHALT=SRES;
-
+  
   while(true){
     sprintf(buffer,"RESETHALT %04x",*MAIN_RESETHALT);
-    VDP_drawText(buffer, 0, 9);
-    sprintf(buffer,"COMMUNICATION %04x",*MAIN_COMMUNICATION);
+    VDP_drawText(buffer, 0, 9);    
+    const char* msg;
+    switch(*MAIN_COMMUNICATION){
+    case 0:
+      msg="idle          ";
+      break;
+    case 1:
+      msg="filling       ";
+      break;
+    case 2:
+      msg="checking      ";
+      break;
+    case 3:
+      msg="ok            ";
+      break;
+    case 0xEE:
+      msg="bad           ";
+      break;
+    default:
+      msg="unknown       ";      
+    }
+      
+      
+
+    sprintf(buffer,"SUBCPU RAM %04x %s",*MAIN_COMMUNICATION,msg);
     VDP_drawText(buffer, 0, 10);    
     VDP_waitVSync();
   };
