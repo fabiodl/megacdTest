@@ -25,7 +25,7 @@ noFillReset:
 readNext:
         cmp.b (%a0),%d1
         beq ok
-        move.b #0xEE,SUB_COMM
+        move.b #0x0E,SUB_COMM
         jmp _Entry_Point
 ok:     add.b #1,%d1
         cmp.b #251,%d1

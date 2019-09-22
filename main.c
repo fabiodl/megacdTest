@@ -110,7 +110,7 @@ int main()
     sprintf(buffer,"RESETHALT %04x",*MAIN_RESETHALT);
     VDP_drawText(buffer, 0, 9);    
     const char* msg;
-    switch(*MAIN_COMMUNICATION){
+    switch((*MAIN_COMMUNICATION)&0x0F){
     case 0:
       msg="idle          ";
       break;
@@ -123,19 +123,21 @@ int main()
     case 3:
       msg="ok            ";
       break;
-    case 0xEE:
+    case 0xE:
       msg="bad           ";
       break;
     default:
       msg="unknown       ";      
-    }
-      
-      
+    }            
 
     sprintf(buffer,"SUBCPU RAM %04x %s",*MAIN_COMMUNICATION,msg);
     VDP_drawText(buffer, 0, 10);    
+    sprintf(buffer,"INTERRUPT 2 %s 3 %s",(*MAIN_COMMUNICATION)&0x20?"yes":"no ",(*MAIN_COMMUNICATION)&0x40?"yes":"no ");
+    VDP_drawText(buffer, 0, 11);    
     VDP_waitVSync();
-  };
+    (*MAIN_RESETHALT)|=0x8100;
+    
+  }
   
   
 }

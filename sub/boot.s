@@ -17,22 +17,23 @@
 
 _Start_Of_Rom:
 _Vecteurs_68K:
-        dc.l    0x000C0000              /* Stack address */
-        dc.l    testRam            /* Program start address */
-        dc.l    _Bus_Error
-        dc.l    _Address_Error
+        dc.l    0x000C0000              /* Stack address 0*/  
+        dc.l    testRam            /* Program start address 4*/
+        dc.l    _Bus_Error               /*8 */
+        dc.l    _Address_Error                      
         dc.l    _Illegal_Instruction
         dc.l    _Zero_Divide
         dc.l    _Chk_Instruction
         dc.l    _Trapv_Instruction
         dc.l    _Privilege_Violation
-        dc.l    _Trace
-        dc.l    _Line_1010_Emulation
-        dc.l    _Line_1111_Emulation
-        dc.l     _Error_Exception, _Error_Exception, _Error_Exception, _Error_Exception
-        dc.l     _Error_Exception, _Error_Exception, _Error_Exception, _Error_Exception
-        dc.l     _Error_Exception, _Error_Exception, _Error_Exception, _Error_Exception
-        dc.l    _Error_Exception, _INT, _EXTINT, _INT
+        dc.l    _Trace                /*24*/
+        dc.l    _Line_1010_Emulation  /*28*/
+        dc.l    _Line_1111_Emulation  /*2C*/
+        dc.l     _Error_Exception, _Error_Exception, _Error_Exception, _Error_Exception  /*...3C*/
+        dc.l     _Error_Exception, _Error_Exception, _Error_Exception, _Error_Exception  /*...4C*/
+        dc.l     _Error_Exception, _Error_Exception, _Error_Exception, _Error_Exception  /*...5C*/
+        dc.l    _Error_Exception /*60*/
+        dc.l    _INT1, _INT2, _INT3 
         dc.l    _HINT
         dc.l    _INT
         dc.l    _VINT
@@ -44,7 +45,16 @@ _Vecteurs_68K:
 
 
 _Entry_Point:
-        move  #0x2700,%sr
+        move  #0x2700,%sr  /*in supervisor mode, all interrupts masked*/
+
+* clear Data RAM
+        move.l   #0x080000,%a0
+        move.w   #0,%d0
+ClearRam:
+        move.w  %d0,(%a0)+
+        cmp.l   #0x0C0000,%a0
+        bne     ClearRam
+
 
 * copy initialized variables from ROM to Work RAM
         lea     _stext,%a0
@@ -64,15 +74,27 @@ CopyVar:
 NoCopy:
 
 * Jump to initialisation process...
+        move.w #0x2000,%sr      /*in supervisor mode, no interrupt mask*/
         jmp     main
 
 
+_INT2:
+  jsr onInterrupt2
+  rte      
 
+
+        
+_INT3:
+  jsr onInterrupt3
+  rte  
+
+        
 _Trace:
 _Line_1010_Emulation:
 _Line_1111_Emulation:
 _Error_Exception:
 _INT:
+_INT1:
 _EXTINT:
 _HINT:
 _VINT:
