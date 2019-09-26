@@ -12,13 +12,19 @@
 *-------------------------------------------------------
 
     .globl 	_hard_reset
-    .global _Entry_Point
+    .global testManager
     .org    0x00000000
 
+.set SUB_COMM_CMD,0x0FF800E
+.set SUB_COMM_STATUS,0x0FF800F
+.set CMD_NONE,0
+.set CMD_TESTRAM,1
+.set STATUS_CMDREAD,0x80
+        
 _Start_Of_Rom:
 _Vecteurs_68K:
         dc.l    0x000C0000              /* Stack address 0*/  
-        dc.l    testRam            /* Program start address 4*/
+        dc.l    testManager            /* Program start address 4*/
         dc.l    _Bus_Error               /*8 */
         dc.l    _Address_Error                      
         dc.l    _Illegal_Instruction
@@ -44,7 +50,7 @@ _Vecteurs_68K:
         dc.l    _INT,_INT,_INT,_INT,_INT,_INT,_INT,_INT
 
 
-_Entry_Point:
+c_init:
         move  #0x2700,%sr  /*in supervisor mode, all interrupts masked*/
 
 * clear Data RAM
@@ -75,7 +81,7 @@ NoCopy:
 
 * Jump to initialisation process...
         move.w #0x2000,%sr      /*in supervisor mode, no interrupt mask*/
-        jmp     main
+        rts
 
 
 _INT2:
@@ -107,4 +113,16 @@ _Trapv_Instruction:
 _Privilege_Violation:        
         rte
 
+testManager:
+        move.b SUB_COMM_CMD,%d0
+        cmp.b #CMD_NONE,%d0
+        beq testManager
+        move.b #STATUS_CMDREAD,SUB_COMM_STATUS
+waitCmdRemoval:
+        cmp.b #CMD_NONE,SUB_COMM_CMD
+        bne waitCmdRemoval
+        
+        cmp.b #CMD_TESTRAM,%d0
+        beq testRam
 
+        

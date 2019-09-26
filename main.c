@@ -7,16 +7,24 @@ volatile uint16_t* MAIN_RESETHALT    =(volatile uint16_t*)0x0A12000;
 volatile uint16_t* MAIN_MEMMODE      =(volatile uint16_t*)0x0A12002;
 
 volatile uint16_t* MAIN_COMMUNICATION=(volatile uint16_t*)0x0A1200E;
-
-
+volatile uint8_t* MAIN_COMM_CMD=      (volatile uint8_t*)0x0A1200E;
+volatile uint8_t* MAIN_COMM_STATUS=      (volatile uint8_t*)0x0A1200F;
 
 #define SRES 1
 #define SBRQ 2
 
+
 #define RET   1
 #define DMNA  2
+#define MODE  4
+
 #define true 1
 #define false 0
+
+
+#define STATUS_CMDREAD 0x80
+#define CMD_NOCMD 0
+#define CMD_TESTRAM 1
 
 
 void write128K(uint8_t* x,uint8_t initv){
@@ -52,15 +60,31 @@ bool read128k(uint8_t* x,uint8_t initv){
 #define OFFSET 0
 //#define OFFSET 0x400000
 
+
+void sendCmd(uint8_t cmd){
+  *MAIN_COMM_CMD=cmd;
+  while(*MAIN_COMM_STATUS!=STATUS_CMDREAD);
+  *MAIN_COMM_CMD=CMD_NOCMD;
+}
+
 int main()
 {
   char buffer[32];
 
+  VDP_drawText("request bus", 0, 0);
+  *MAIN_RESETHALT=SBRQ;
+  do{
+    sprintf(buffer,"%04x",*MAIN_RESETHALT);
+    VDP_drawText(buffer, 14, 0);
+    VDP_waitVSync();
+  }while (!((*MAIN_RESETHALT)&SBRQ));
+  VDP_drawText("got bus", 19, 0);
+  
   
   for (uint8_t bank=0;bank<4;bank++){
     *MAIN_MEMMODE=(bank<<6)|RET;
     sprintf(buffer,"PROG BANK %d",bank);
-    VDP_drawText(buffer, 0, bank);
+    VDP_drawText(buffer, 0, bank+1);
     VDP_waitVSync();
     write128K((uint8_t*)(OFFSET+0x20000),bank);
     }
@@ -79,7 +103,7 @@ int main()
   for (uint8_t bank=0;bank<4;bank++){
     *MAIN_MEMMODE=(bank<<6)|RET;
     bool success=read128k((uint8_t*)(OFFSET+0x20000),bank);    
-    VDP_drawText(success?"ok":"bad", 14, bank);
+    VDP_drawText(success?"ok":"bad", 14, bank+1);
     VDP_waitVSync();
   }
   r=5;
@@ -90,21 +114,18 @@ int main()
     VDP_waitVSync();
     r++;
   }
-  
-  VDP_drawText("request bus", 0, 7);
-  *MAIN_RESETHALT=SBRQ;
-  do{
-    sprintf(buffer,"%04x",*MAIN_RESETHALT);
-    VDP_drawText(buffer, 14, 7);
-    VDP_waitVSync();
-  }while (!((*MAIN_RESETHALT)&SBRQ));
-  VDP_drawText("got bus", 19, 7);
 
+
+  VDP_drawText("upload sub ", 0, 7);
+  VDP_waitVSync();
+  
   *MAIN_MEMMODE=(0<<6)|RET;
   memcpy((void*)(OFFSET+0x20000),&subCodeStart,&subCodeEnd-&subCodeStart);
   
   *MAIN_MEMMODE= DMNA;
   *MAIN_RESETHALT=SRES;
+  
+  sendCmd(CMD_TESTRAM);
   
   while(true){
     sprintf(buffer,"RESETHALT %04x",*MAIN_RESETHALT);
