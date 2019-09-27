@@ -4,6 +4,5 @@ manual:	 *.c *.s
 	$(CC) $(CCFLAGS) -o out/rom.out -T mcd.ld *.c *.s 
 	/opt/gendev/bin/m68k-elf-objcopy -O binary out/rom.out out/rom.bin
 
-all: 
-	GENDEV=/opt/gendev make -f /opt/gendev/sgdk/mkfiles/makefile.gen clean all
-	xxd -i out/rom.bin > subrom.h
+clean:
+	@rm out/*

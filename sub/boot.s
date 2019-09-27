@@ -18,8 +18,18 @@
 .set SUB_COMM_CMD,0x0FF800E
 .set SUB_COMM_STATUS,0x0FF800F
 .set CMD_NONE,0
-.set CMD_TESTRAM,1
+.set CMD_RESETSTATUS,1        
+.set CMD_TESTRAM,2
+.set CMD_GIVERAM0,3
+.set CMD_GIVERAM1,4       
+.set CMD_INITC,5
+.set CMD_WAITINTERRUPT,6
+
+        
+.set STATUS_IDLE,0x00
 .set STATUS_CMDREAD,0x80
+.set STATUS_INITC,4
+.set STATUS_C_OK,5        
         
 _Start_Of_Rom:
 _Vecteurs_68K:
@@ -50,7 +60,8 @@ _Vecteurs_68K:
         dc.l    _INT,_INT,_INT,_INT,_INT,_INT,_INT,_INT
 
 
-c_init:
+init_c:
+        move.b #STATUS_INITC,SUB_COMM_STATUS
         move  #0x2700,%sr  /*in supervisor mode, all interrupts masked*/
 
 * clear Data RAM
@@ -81,7 +92,8 @@ NoCopy:
 
 * Jump to initialisation process...
         move.w #0x2000,%sr      /*in supervisor mode, no interrupt mask*/
-        rts
+        move.b #STATUS_C_OK,SUB_COMM_STATUS
+        bra testManager
 
 
 _INT2:
@@ -123,6 +135,28 @@ waitCmdRemoval:
         bne waitCmdRemoval
         
         cmp.b #CMD_TESTRAM,%d0
-        beq testRam
+        beq testRam        
+              
+        cmp.b #CMD_GIVERAM0,%d0
+        beq giveRam0       
+        
+        cmp.b #CMD_GIVERAM1,%d0
+        beq giveRam1        
 
         
+        cmp.b #CMD_RESETSTATUS,%d0
+        beq resetStatus
+
+        
+        cmp.b #CMD_INITC,%d0
+        beq init_c
+
+        cmp.b #CMD_WAITINTERRUPT,%d0                
+        beq waitInterrupt
+
+        
+        bra testManager
+
+resetStatus:
+        move.b #STATUS_IDLE,SUB_COMM_STATUS
+        bra testManager

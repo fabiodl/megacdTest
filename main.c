@@ -21,10 +21,25 @@ volatile uint8_t* MAIN_COMM_STATUS=      (volatile uint8_t*)0x0A1200F;
 #define true 1
 #define false 0
 
-
-#define STATUS_CMDREAD 0x80
 #define CMD_NOCMD 0
-#define CMD_TESTRAM 1
+#define CMD_RESETSTATUS 1
+#define CMD_TESTRAM 2
+#define CMD_GIVERAM0 3
+#define CMD_GIVERAM1 4
+#define CMD_INITC 5
+#define CMD_WAITINTERRUPT 6
+
+#define STATUS_IDLE 0x00
+#define STATUS_FILLING 0x01
+#define STATUS_CHECKING 0x02
+#define STATUS_PASSED 0x03
+#define STATUS_INITC 0x04
+#define STATUS_C_OK 0x05
+#define STATUS_WAITINTERRUPT 0x06
+#define STATUS_GREENLED 0x07
+#define STATUS_REDLED 0x08
+#define STATUS_ERROR 0x0E
+#define STATUS_CMDREAD 0x80
 
 
 void write128K(uint8_t* x,uint8_t initv){
@@ -67,18 +82,54 @@ void sendCmd(uint8_t cmd){
   *MAIN_COMM_CMD=CMD_NOCMD;
 }
 
+
+static const char* msgs[]=
+  {
+   "idle    ",  //0
+   "filling ",  //1
+   "checking",  //2
+   "ok      ",  //3
+   "c inited",  //4
+   "c ok    ",  //5
+   "wait int",  //6
+   "grn led ",  //7
+   "red led ",  //8
+   "",          //9
+   "",          //A
+   "",          //B
+   "",          //C
+   "",          //D
+   "failed"     //E
+  };
+
+static const char* unknownMsg=
+   "unknown ";
+
+const char* getMsg(uint8_t status){
+  status=status&0x1F;
+  if (status<0x0F){
+    return msgs[status];
+  };
+  return unknownMsg;
+}
+
+
 int main()
 {
   char buffer[32];
-
-  VDP_drawText("request bus", 0, 0);
+  uint8_t status=0;
+  
+  VDP_drawText("req bus", 0, 0);
   *MAIN_RESETHALT=SBRQ;
+  uint16_t resetHalt,memMode;
   do{
-    sprintf(buffer,"%04x",*MAIN_RESETHALT);
-    VDP_drawText(buffer, 14, 0);
+    resetHalt=*MAIN_RESETHALT;
+    memMode=*MAIN_MEMMODE;
+    sprintf(buffer,"RH %04x MM %04x",resetHalt,memMode);
+    VDP_drawText(buffer, 8, 0);
     VDP_waitVSync();
-  }while (!((*MAIN_RESETHALT)&SBRQ));
-  VDP_drawText("got bus", 19, 0);
+  }while ((!(resetHalt&SBRQ))||(memMode&DMNA));
+  VDP_drawText("got bus", 30, 0);
   
   
   for (uint8_t bank=0;bank<4;bank++){
@@ -114,9 +165,9 @@ int main()
     VDP_waitVSync();
     r++;
   }
+  
 
-
-  VDP_drawText("upload sub ", 0, 7);
+  VDP_drawText("sub upload ", 0, 7);
   VDP_waitVSync();
   
   *MAIN_MEMMODE=(0<<6)|RET;
@@ -125,40 +176,53 @@ int main()
   *MAIN_MEMMODE= DMNA;
   *MAIN_RESETHALT=SRES;
   
-  sendCmd(CMD_TESTRAM);
-  
-  while(true){
-    sprintf(buffer,"RESETHALT %04x",*MAIN_RESETHALT);
-    VDP_drawText(buffer, 0, 9);    
-    const char* msg;
-    switch((*MAIN_COMMUNICATION)&0x0F){
-    case 0:
-      msg="idle          ";
-      break;
-    case 1:
-      msg="filling       ";
-      break;
-    case 2:
-      msg="checking      ";
-      break;
-    case 3:
-      msg="ok            ";
-      break;
-    case 0xE:
-      msg="bad           ";
-      break;
-    default:
-      msg="unknown       ";      
-    }            
 
-    sprintf(buffer,"SUBCPU RAM %04x %s",*MAIN_COMMUNICATION,msg);
+
+  
+  sendCmd(CMD_RESETSTATUS);
+  VDP_drawText("sub ramtest", 0, 7);
+  sendCmd(CMD_TESTRAM);
+
+  do{
+    status=*MAIN_COMM_STATUS;
+    sprintf(buffer,"RESETHALT %04x",*MAIN_RESETHALT);
+    VDP_drawText(buffer, 0, 9);        
+    sprintf(buffer,"sub ramtest %04x %s",status,getMsg(status));
     VDP_drawText(buffer, 0, 10);    
-    sprintf(buffer,"INTERRUPT 2 %s 3 %s",(*MAIN_COMMUNICATION)&0x20?"yes":"no ",(*MAIN_COMMUNICATION)&0x40?"yes":"no ");
+    VDP_waitVSync();
+    
+  }while(status!=STATUS_PASSED && status!=STATUS_ERROR);
+  
+  VDP_waitVSync();
+  
+  
+  sendCmd(CMD_RESETSTATUS);
+  VDP_drawText("sub init c ", 0, 7);
+  sendCmd(CMD_INITC);
+
+  do{
+    status=*MAIN_COMM_STATUS;
+    sprintf(buffer,"subcpu %04x %s",status,getMsg(status));
     VDP_drawText(buffer, 0, 11);    
     VDP_waitVSync();
-    (*MAIN_RESETHALT)|=0x8100;
-    
-  }
+  }while(status!=STATUS_C_OK);
+  VDP_drawText("sub interrupt", 0, 7);
+
+  //sendCmd(CMD_RESETSTATUS);
+  sendCmd(CMD_WAITINTERRUPT);
+  VDP_drawText("sub send interrupt 2", 0, 7);
+  (*MAIN_RESETHALT)|=0x8100;
+  VDP_drawText("sub show interrupt  ", 0, 7);
   
+  do{
+    status=*MAIN_COMM_STATUS;
+    sprintf(buffer,"interrupt %04x %s 2 %s 3 %s",
+            status,getMsg(status),
+            (*MAIN_COMMUNICATION)&0x20?"yes":"no ",
+            (*MAIN_COMMUNICATION)&0x40?"yes":"no ");
+    VDP_drawText(buffer, 0, 12);    
+    VDP_waitVSync();
+  }while(true);
+
   
 }
