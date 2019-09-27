@@ -131,7 +131,7 @@ int main()
   }while ((!(resetHalt&SBRQ))||(memMode&DMNA));
   VDP_drawText("got bus", 30, 0);
   
-  
+  /*
   for (uint8_t bank=0;bank<4;bank++){
     *MAIN_MEMMODE=(bank<<6)|RET;
     sprintf(buffer,"PROG BANK %d",bank);
@@ -166,7 +166,7 @@ int main()
     r++;
   }
   
-
+  */
   VDP_drawText("sub upload ", 0, 7);
   VDP_waitVSync();
   
@@ -179,7 +179,7 @@ int main()
 
 
   
-  sendCmd(CMD_RESETSTATUS);
+  /*  sendCmd(CMD_RESETSTATUS);
   VDP_drawText("sub ramtest", 0, 7);
   sendCmd(CMD_TESTRAM);
 
@@ -192,18 +192,42 @@ int main()
     VDP_waitVSync();
     
   }while(status!=STATUS_PASSED && status!=STATUS_ERROR);
-  
+  */
+
+  sendCmd(CMD_RESETSTATUS);
+  VDP_drawText("1M - ask bank 0", 0, 7);
   VDP_waitVSync();
+  sendCmd(CMD_GIVERAM0);
+
+  do{
+    memMode=*MAIN_MEMMODE;
+    sprintf(buffer,"MM %04x state %02x",memMode,*MAIN_COMM_STATUS);
+    VDP_drawText(buffer, 0, 11);        
+  }while( ((memMode&MODE)!=MODE)||((memMode&RET)!=0));
+        
+  VDP_drawText("1M - ask bank 1", 0, 8);
+  VDP_waitVSync();
+
+  sendCmd(CMD_GIVERAM1);
+  
+  do{
+    memMode=*MAIN_MEMMODE;
+    sprintf(buffer,"MM %04x state %02x",memMode,*MAIN_COMM_STATUS);
+    VDP_drawText(buffer, 0, 12);        
+  }while( ((memMode&MODE)!=MODE)||((memMode&RET)!=RET));
+
+  
   
   
   sendCmd(CMD_RESETSTATUS);
   VDP_drawText("sub init c ", 0, 7);
+  VDP_waitVSync();
   sendCmd(CMD_INITC);
 
   do{
     status=*MAIN_COMM_STATUS;
     sprintf(buffer,"subcpu %04x %s",status,getMsg(status));
-    VDP_drawText(buffer, 0, 11);    
+    VDP_drawText(buffer, 0, 12);    
     VDP_waitVSync();
   }while(status!=STATUS_C_OK);
   VDP_drawText("sub interrupt", 0, 7);
@@ -220,7 +244,7 @@ int main()
             status,getMsg(status),
             (*MAIN_COMMUNICATION)&0x20?"yes":"no ",
             (*MAIN_COMMUNICATION)&0x40?"yes":"no ");
-    VDP_drawText(buffer, 0, 12);    
+    VDP_drawText(buffer, 0, 13);    
     VDP_waitVSync();
   }while(true);
 
