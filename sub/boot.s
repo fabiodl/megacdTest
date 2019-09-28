@@ -12,26 +12,13 @@
 *-------------------------------------------------------
 
     .globl 	_hard_reset
-    .global testManager
+    .global init_c
     .org    0x00000000
 
-.set SUB_COMM_CMD,0x0FF800E
-.set SUB_COMM_STATUS,0x0FF800F
-.set CMD_NONE,0
-.set CMD_RESETSTATUS,1        
-.set CMD_TESTRAM,2
-.set CMD_GIVERAM0,3
-.set CMD_GIVERAM1,4       
-.set CMD_2MMODE,5
-.set CMD_INITC,6
-.set CMD_WAITINTERRUPT,7
-
-        
-.set STATUS_IDLE,0x00
-.set STATUS_CMDREAD,0x80
-.set STATUS_CMDEXEC,0x81
 .set STATUS_INITC,4
 .set STATUS_C_OK,5        
+.set SUB_COMM_STATUS,0x0FF800F
+        
         
 _Start_Of_Rom:
 _Vecteurs_68K:
@@ -127,42 +114,3 @@ _Trapv_Instruction:
 _Privilege_Violation:        
         rte
 
-testManager:
-        move.b SUB_COMM_CMD,%d0
-        cmp.b #CMD_NONE,%d0
-        beq testManager
-        move.b #STATUS_CMDREAD,SUB_COMM_STATUS
-waitCmdRemoval:
-        cmp.b #CMD_NONE,SUB_COMM_CMD
-        bne waitCmdRemoval
-        move.b #STATUS_CMDEXEC,SUB_COMM_STATUS
-        
-        cmp.b #CMD_TESTRAM,%d0
-        beq testRam        
-              
-        cmp.b #CMD_GIVERAM0,%d0
-        beq giveRam0       
-        
-        cmp.b #CMD_GIVERAM1,%d0
-        beq giveRam1        
-
-        cmp.b #CMD_2MMODE,%d0
-        beq to2MMode
-        
-        cmp.b #CMD_RESETSTATUS,%d0
-        beq resetStatus
-
-        
-        cmp.b #CMD_INITC,%d0
-        beq init_c
-
-        cmp.b #CMD_WAITINTERRUPT,%d0                
-        beq waitInterrupt
-        
-        
-        
-        bra testManager
-
-resetStatus:
-        move.b #STATUS_IDLE,SUB_COMM_STATUS
-        bra testManager
