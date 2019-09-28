@@ -1,6 +1,8 @@
 #include <stdint.h>
 #include <genesis.h>
 
+
+
 extern uint8_t subCodeStart,subCodeEnd;
 
 volatile uint16_t* MAIN_RESETHALT    =(volatile uint16_t*)0x0A12000;
@@ -27,9 +29,10 @@ volatile uint8_t* MAIN_COMM_STATUS=      (volatile uint8_t*)0x0A1200F;
 #define CMD_TESTBACKUPRAM 3
 #define CMD_GIVEBANK0 4
 #define CMD_GIVEBANK1 5
-#define CMD_2MMODE 6
-#define CMD_INITC 7
-#define CMD_WAITINTERRUPT 8
+#define CMD_GIVE2M 6
+#define CMD_2MMODE 7
+#define CMD_INITC 8
+#define CMD_WAITINTERRUPT 9
 
 #define STATUS_IDLE 0x00
 #define STATUS_FILLING 0x01
@@ -62,7 +65,7 @@ static const char* msgs[]=
    "filling ",  //1
    "checking",  //2
    "ok      ",  //3
-   "c inited",  //4
+   "c init  ",  //4
    "c ok    ",  //5
    "wait int",  //6
    "grn led ",  //7
@@ -90,15 +93,19 @@ const char* getMsg(uint8_t status){
   return "unknown ";
 }
 
+static const char* rotatingBar="|/-\\";
+
 uint8_t getStatus(){
+  static uint8_t cnt=0;
   uint8_t status=*MAIN_COMM_STATUS;
   char buffer[33];
-  sprintf(buffer,"status %02x %s",status,getMsg(status));
+  sprintf(buffer,"status %02x %s %c",status,getMsg(status),rotatingBar[(cnt>>4)%4]);
   int l=strlen(buffer);
   memset(buffer+l,' ',32-l);
   buffer[32]=0;
   VDP_drawText(buffer, 0, 23); 
   VDP_waitVSync();
+  cnt++;
   return status;
 }
 
@@ -168,11 +175,13 @@ bool read128k(uint8_t* x,uint8_t initv){
 
 
 
+
 void testMainOnly(){
     char buffer[33];
     uint16_t resetHalt,memMode;
   
     VDP_drawText("req bus", 0, 0);
+    VDP_waitVSync();
     *MAIN_RESETHALT=SBRQ;
     do{
       resetHalt=*MAIN_RESETHALT;
@@ -221,6 +230,17 @@ void testMainOnly(){
 }
 
 
+static void stopSubCpu(){
+ printActionLine("stop cpu");
+ *MAIN_RESETHALT=(0<<6)|SBRQ;
+ while( (*MAIN_RESETHALT&SBRQ)!=SBRQ);
+}
+
+void startCpu(){
+  printActionLine("start cpu");
+  *MAIN_RESETHALT=(0<<6)|SRES;
+  while( (*MAIN_RESETHALT&SBRQ)!=0);
+}
 
 
 static void testWithSub(){
@@ -228,13 +248,17 @@ static void testWithSub(){
   uint8_t status=0;
   uint16_t memMode;
 
+  stopSubCpu();
   printActionLine("sub upload");
   
   *MAIN_MEMMODE=(0<<6)|RET;
   memcpy((void*)(OFFSET+0x20000),&subCodeStart,&subCodeEnd-&subCodeStart);
   
+  
   *MAIN_MEMMODE= DMNA;
-  *MAIN_RESETHALT=SRES;
+  startCpu();
+    
+
 
   
   printActionLine("sub word ram test");
@@ -278,12 +302,37 @@ static void testWithSub(){
    sprintf(buffer,"1M - BANK %01x   %s",bank,success?"ok":"bad");
    VDP_drawText(buffer, 0, 9+bank);
  }
+
  
 
+  stopSubCpu();
   
+ 
+ printActionLine("verify code");
+ const uint8_t* prog=(uint8_t*)(OFFSET+0x20000);
+ const uint8_t* src=(uint8_t*)&subCodeStart;
+ uint16_t size=&subCodeEnd-&subCodeStart;
+ bool success=true;
+ for (uint16_t i=0;i<size;i++){
+   if (prog[i]!=src[i]){
+     success=false;
+     break;
+   }
+ }
+
+ sprintf(buffer,"VERIFY CODE   %s",success?"ok":"bad");
+ VDP_drawText(buffer, 0, 11);
+
+ printActionLine("start sub cpu");
+ *MAIN_RESETHALT=(0<<6)|SRES;
+ while( (*MAIN_RESETHALT&SBRQ)!=0);
+ 
  printActionLine("set 2M mode");
  sendCmd(CMD_2MMODE);
-  
+
+ 
+
+ 
   do{
     memMode=*MAIN_MEMMODE;
   }while( (memMode&MODE)!=0);
@@ -305,10 +354,10 @@ static void testWithSub(){
   while(true){
     status=getStatus();
     sprintf(buffer,"INTERRUPT 2   %s",(*MAIN_COMMUNICATION)&0x20?"yes":"no ");
-    VDP_drawText(buffer, 0, 11);    
+    VDP_drawText(buffer, 0, 12);    
     VDP_waitVSync();
     sprintf(buffer,"INTERRUPT 3   %s",(*MAIN_COMMUNICATION)&0x40?"yes":"no ");
-    VDP_drawText(buffer, 0, 12);    
+    VDP_drawText(buffer, 0, 13);    
   }
 
 

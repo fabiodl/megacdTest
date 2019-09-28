@@ -16,7 +16,9 @@
     .org    0x00000000
 
 .set STATUS_INITC,4
-.set STATUS_C_OK,5        
+.set STATUS_C_OK,5
+.set STATUS_68K_ERR,0x8E
+        
 .set SUB_COMM_STATUS,0x0FF800F
         
         
@@ -38,11 +40,11 @@ _Vecteurs_68K:
         dc.l     _Error_Exception, _Error_Exception, _Error_Exception, _Error_Exception  /*...4C*/
         dc.l     _Error_Exception, _Error_Exception, _Error_Exception, _Error_Exception  /*...5C*/
         dc.l    _Error_Exception /*60*/
-        dc.l    _INT1, _INT2, _INT3 
-        dc.l    _HINT
-        dc.l    _INT
-        dc.l    _VINT
-        dc.l    _INT
+        dc.l    _INT1, _INT2, _INT3 /*..6C*/
+        dc.l    _HINT /*70*/
+        dc.l    _INT  /*74*/
+        dc.l    _VINT /*78*/
+        dc.l    _INT  /*7C*/
         dc.l    _INT,_INT,_INT,_INT,_INT,_INT,_INT,_INT
         dc.l    _INT,_INT,_INT,_INT,_INT,_INT,_INT,_INT
         dc.l    _INT,_INT,_INT,_INT,_INT,_INT,_INT,_INT
@@ -52,15 +54,17 @@ _Vecteurs_68K:
 init_c:
         move.b #STATUS_INITC,SUB_COMM_STATUS
         move  #0x2700,%sr  /*in supervisor mode, all interrupts masked*/
-
+        move.b #0xF0,SUB_COMM_STATUS
+        
 * clear Data RAM
-        move.l   #0x080000,%a0
-        move.w   #0,%d0
+        move.l  #0x080000,%a0
+        move.w  #0,%d0
 ClearRam:
         move.w  %d0,(%a0)+
         cmp.l   #0x0C0000,%a0
         bne     ClearRam
 
+        move.b #0xF1,SUB_COMM_STATUS
 
 * copy initialized variables from ROM to Work RAM
         lea     _stext,%a0
@@ -78,8 +82,8 @@ CopyVar:
         dbra    %d0,CopyVar
 
 NoCopy:
-
 * Jump to initialisation process...
+        move.b #0xF2,SUB_COMM_STATUS
         move.w #0x2000,%sr      /*in supervisor mode, no interrupt mask*/
         move.b #STATUS_C_OK,SUB_COMM_STATUS
         bra testManager
@@ -112,5 +116,6 @@ _Zero_Divide:
 _Chk_Instruction:
 _Trapv_Instruction:
 _Privilege_Violation:        
+        move.b #STATUS_68K_ERR,SUB_COMM_STATUS
         rte
 

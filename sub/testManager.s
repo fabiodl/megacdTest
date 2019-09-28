@@ -5,10 +5,11 @@
 .set CMD_TESTWORDRAM,2
 .set CMD_TESTBACKUPRAM,3
 .set CMD_GIVEBANK0,4
-.set CMD_GIVEBANK1,5       
-.set CMD_2MMODE,6
-.set CMD_INITC,7
-.set CMD_WAITINTERRUPT,8
+.set CMD_GIVEBANK1,5
+.set CMD_GIVE2M,6        
+.set CMD_2MMODE,7
+.set CMD_INITC,8
+.set CMD_WAITINTERRUPT,9
 
         
 .set STATUS_IDLE,0x00
@@ -38,7 +39,10 @@ waitCmdRemoval:
         beq giveBank0       
         
         cmp.b #CMD_GIVEBANK1,%d0
-        beq giveBank1        
+        beq giveBank1
+
+        cmp.b #CMD_GIVE2M,%d0
+        beq give2M
 
         cmp.b #CMD_2MMODE,%d0
         beq to2MMode

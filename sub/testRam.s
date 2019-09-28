@@ -1,6 +1,7 @@
         .global testWordRam
         .global giveBank0
         .global giveBank1
+        .global give2M
         .global to2MMode
         .global testBackupRam
 .set SUB_COMM_STATUS,0x0FF800F
@@ -51,14 +52,14 @@ noReadReset:
 
         
 giveBank0:
-        move.w #4,SUB_MEMORYMODE /*MODE*/
+        move.w #MODE,SUB_MEMORYMODE /*MODE*/
         move.b #0x0A,SUB_COMM_STATUS
         bra testManager
 
 
 giveBank1:
 
-        move.w #5,SUB_MEMORYMODE  /*MODE|RET*/
+        move.w #MODE+RET,SUB_MEMORYMODE  /*MODE|RET*/
         move.b #0x0B,SUB_COMM_STATUS
         bra testManager
         
@@ -67,6 +68,10 @@ to2MMode:
         move.w #0,SUB_MEMORYMODE /*2M mode, to SUB*/
         bra testManager
 
+give2M:
+        move.w #RET,SUB_MEMORYMODE /*2M mode, to MAIN*/
+        bra testManager
+        
 
 
 testBackupRam:  
