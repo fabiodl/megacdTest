@@ -1,6 +1,7 @@
         .global testRam
         .global giveRam0
         .global giveRam1
+        .global to2MMode
         
 .set SUB_COMM_STATUS,0x0FF800F
 .set SUB_MEMORYMODE,0xFF8002
@@ -61,3 +62,7 @@ giveRam1:
         move.b #0x0B,SUB_COMM_STATUS
         bra testManager
         
+
+to2MMode:
+        move.w #0,SUB_MEMORYMODE /*2M mode, to SUB*/
+        bra testManager
