@@ -23,16 +23,18 @@ volatile uint8_t* MAIN_COMM_STATUS=      (volatile uint8_t*)0x0A1200F;
 #define true 1
 #define false 0
 
-#define CMD_NOCMD 0
-#define CMD_RESETSTATUS 1
-#define CMD_TESTWORDRAM 2
-#define CMD_TESTBACKUPRAM 3
-#define CMD_GIVEBANK0 4
-#define CMD_GIVEBANK1 5
-#define CMD_GIVE2M 6
-#define CMD_2MMODE 7
-#define CMD_INITC 8
-#define CMD_WAITINTERRUPT 9
+#define CMD_NOCMD           0x00
+#define CMD_RESETSTATUS     0x01
+#define CMD_TESTWORDRAM     0x02
+#define CMD_TESTBACKUPRAM   0x03
+#define CMD_GIVEBANK0       0x04
+#define CMD_GIVEBANK1       0x05
+#define CMD_GIVE2M          0x06
+#define CMD_2MMODE          0x07
+#define CMD_INITC           0x08
+#define CMD_WAITINTERRUPT   0x09
+#define CMD_PROGTOWORD      0x0A
+#define CMD_WORDZEROFILLING 0x0B
 
 #define STATUS_IDLE 0x00
 #define STATUS_FILLING 0x01
@@ -43,6 +45,8 @@ volatile uint8_t* MAIN_COMM_STATUS=      (volatile uint8_t*)0x0A1200F;
 #define STATUS_WAITINTERRUPT 0x06
 #define STATUS_GREENLED 0x07
 #define STATUS_REDLED 0x08
+#define STATUS_CHECKREQ 0x09
+
 #define STATUS_ERROR 0x0E
 #define STATUS_CMDREAD 0x80
 #define STATUS_CMDEXEC 0x81
@@ -57,7 +61,19 @@ volatile uint8_t* MAIN_COMM_STATUS=      (volatile uint8_t*)0x0A1200F;
 #define OFFSET 0
 //#define OFFSET 0x400000
 
+enum{
+     ROW_SUBWORD=7,
+     ROW_SUBBACKUP,
+     ROW_CODE=11,
+     ROW_ACTION=21,
+     ROW_CMD=22,
+     ROW_VARS=23
+};
 
+enum{
+     COLUMN_FIRST=14,
+     COLUMN_SECOND=18
+};
 
 static const char* msgs[]=
   {
@@ -95,32 +111,45 @@ const char* getMsg(uint8_t status){
 
 static const char* rotatingBar="|/-\\";
 
-uint8_t getStatus(){
+
+struct State{
+  uint8_t status;
+  uint16_t memMode;
+  uint16_t resetHalt;
+};
+
+
+struct State getState(){
   static uint8_t cnt=0;
-  uint8_t status=*MAIN_COMM_STATUS;
+  struct State s;
+  s.status=*MAIN_COMM_STATUS;
+  s.memMode=*MAIN_MEMMODE;
+  s.resetHalt=*MAIN_RESETHALT;
+  
   char buffer[33];
-  sprintf(buffer,"status %02x %s %c",status,getMsg(status),rotatingBar[(cnt>>4)%4]);
+  sprintf(buffer,"%cRH %04x MM %04x ST %02x %s",
+          rotatingBar[(cnt>>4)%4],
+          s.resetHalt,
+          s.memMode,
+          s.status,getMsg(s.status));
   int l=strlen(buffer);
   memset(buffer+l,' ',32-l);
   buffer[32]=0;
-  VDP_drawText(buffer, 0, 23); 
+  VDP_drawText(buffer, 0, ROW_VARS); 
   VDP_waitVSync();
   cnt++;
-  return status;
+  return s;
 }
 
 
 void sendCmd(uint8_t cmd){
   char buffer[32];
   sprintf(buffer,"send cmd %02x",cmd);
-  VDP_drawText(buffer, 0,21);
+  VDP_drawText(buffer, 0,ROW_CMD);
   *MAIN_COMM_CMD=cmd;
-  uint8_t status;
-  do{
-    status=getStatus();
-  }while(status!=STATUS_CMDREAD);
+  while(getState().status!=STATUS_CMDREAD);
   sprintf(buffer,"exec cmd %02x",cmd);
-  VDP_drawText(buffer, 0,21);
+  VDP_drawText(buffer, 0,ROW_CMD);
   *MAIN_COMM_CMD=CMD_NOCMD;
   VDP_waitVSync();
 }
@@ -133,7 +162,7 @@ void printActionLine(const char* str){
   memset(buffer,' ',32);
   buffer[32]=0;
   memcpy(buffer,str,strlen(str));
-  VDP_drawText(buffer, 0, 22);
+  VDP_drawText(buffer, 0, ROW_ACTION);
   VDP_waitVSync();
 }
 
@@ -144,19 +173,19 @@ void askBank(uint8_t bank){
   sprintf(buffer,"1M - ask bank %02x",bank);
   printActionLine(buffer);
   sendCmd(bank==0?CMD_GIVEBANK0:CMD_GIVEBANK1);
-  uint16_t memMode;
+  uint16_t memMode; 
   do{
-    memMode=*MAIN_MEMMODE;
+    memMode=getState().memMode;
   }while( ((memMode&MODE)!=MODE)||((memMode&RET)!=bank));  
 }
 
 void write128K(uint8_t* x,uint8_t initv){
   uint8_t v=initv;
   for (uint32_t i=0;i<0x20000;i++){  
-   x[i]=v;
-   v++;
-   if (v==131)
-     v=0;
+    x[i]=v;
+    v++;
+    if (v==131)
+      v=0;
   }
 }
 
@@ -174,79 +203,117 @@ bool read128k(uint8_t* x,uint8_t initv){
 }
 
 
+void printFirstResult(uint8_t row,const char* header,bool success){
+  VDP_drawText(header,0,row);
+  VDP_drawText(success?"ok":"bad",COLUMN_FIRST,row);
+  VDP_waitVSync();
+}
 
+void printResult(uint8_t row,uint8_t col,bool success){
+  VDP_drawText(success?"ok":"bad",col,row);
+  VDP_waitVSync();
+}
 
 void testMainOnly(){
-    char buffer[33];
-    uint16_t resetHalt,memMode;
-  
-    VDP_drawText("req bus", 0, 0);
+  char buffer[33];  
+  VDP_drawText("req bus", 0, 0);
+  VDP_waitVSync();
+  *MAIN_RESETHALT=SBRQ;
+  struct State state;
+  do{
+    state=getState();
+  }while ((!(state.resetHalt&SBRQ))||(state.memMode&DMNA));
+  VDP_drawText("got bus", 14, 0);
+    
+    
+  for (uint8_t bank=0;bank<4;bank++){
+    *MAIN_MEMMODE=(bank<<6)|RET;
+    sprintf(buffer,"PROG BANK %d",bank);
+    VDP_drawText(buffer, 0, bank+1);
     VDP_waitVSync();
-    *MAIN_RESETHALT=SBRQ;
-    do{
-      resetHalt=*MAIN_RESETHALT;
-      memMode=*MAIN_MEMMODE;
-      sprintf(buffer,"RH %04x MM %04x",resetHalt,memMode);
-      VDP_drawText(buffer, 8, 0);
-      VDP_waitVSync();
-    }while ((!(resetHalt&SBRQ))||(memMode&DMNA));
-    VDP_drawText("got bus", 30, 0);
+    write128K((uint8_t*)(OFFSET+0x20000),bank);
+  }
     
     
-    for (uint8_t bank=0;bank<4;bank++){
-      *MAIN_MEMMODE=(bank<<6)|RET;
-      sprintf(buffer,"PROG BANK %d",bank);
-      VDP_drawText(buffer, 0, bank+1);
-      VDP_waitVSync();
-      write128K((uint8_t*)(OFFSET+0x20000),bank);
-    }
-    
-    
-    uint8_t r=5;
-    for (uint8_t* x=(uint8_t*)(OFFSET+0x200000);x<(uint8_t*)(OFFSET+0x240000);x+=0x20000){
+  uint8_t r=5;
+  for (uint8_t* x=(uint8_t*)(OFFSET+0x200000);x<(uint8_t*)(OFFSET+0x240000);x+=0x20000){
     sprintf(buffer,"DATA ADDR %x",(uint16_t)((uint32_t)x>>16) );
     VDP_drawText(buffer, 0, r);
     VDP_waitVSync();
     write128K(x,r);    
     r++;
-    }
+  }
     
     
-    for (uint8_t bank=0;bank<4;bank++){
-      *MAIN_MEMMODE=(bank<<6)|RET;
-      bool success=read128k((uint8_t*)(OFFSET+0x20000),bank);    
-    VDP_drawText(success?"ok":"bad", 14, bank+1);
-    VDP_waitVSync();
-    }
-    r=5;
+  for (uint8_t bank=0;bank<4;bank++){
+    *MAIN_MEMMODE=(bank<<6)|RET;
+    bool success=read128k((uint8_t*)(OFFSET+0x20000),bank);
+    printResult(bank+1,COLUMN_FIRST,success);    
+  }
+  r=5;
     
-    for (uint8_t* x=(uint8_t*)(OFFSET+0x200000);x<(uint8_t*)(OFFSET+0x240000);x+=0x20000){
-      bool success=read128k(x,r);    
-      VDP_drawText(success?"ok":"bad", 14, r);
-    VDP_waitVSync();
+  for (uint8_t* x=(uint8_t*)(OFFSET+0x200000);x<(uint8_t*)(OFFSET+0x240000);x+=0x20000){
+    bool success=read128k(x,r);
+    printResult(r,COLUMN_FIRST,success);    
     r++;
-    }
+  }
             
 }
 
 
 static void stopSubCpu(){
- printActionLine("stop cpu");
- *MAIN_RESETHALT=(0<<6)|SBRQ;
- while( (*MAIN_RESETHALT&SBRQ)!=SBRQ);
+  printActionLine("stop cpu");
+  *MAIN_RESETHALT=(0<<6)|SBRQ;
+  while( (getState().resetHalt&SBRQ)!=SBRQ);
 }
 
-void startCpu(){
-  printActionLine("start cpu");
+static void startSubCpu(){
+  printActionLine("start sub cpu");
   *MAIN_RESETHALT=(0<<6)|SRES;
-  while( (*MAIN_RESETHALT&SBRQ)!=0);
+  while( (getState().resetHalt&SBRQ)!=0);
 }
+
+void set2MMode(){
+  printActionLine("set 2M mode");
+  sendCmd(CMD_2MMODE);
+  while(getState().memMode&MODE);
+}
+
+static void startSubCpuWithMem(){
+  *MAIN_MEMMODE= DMNA;
+  startSubCpu();
+  set2MMode();
+  printActionLine("wait sub mem acquisition");
+  while(getState().memMode&RET){
+    *MAIN_MEMMODE= DMNA;
+  }
+}
+
+static void memToSub(){
+  *MAIN_MEMMODE= DMNA;
+  printActionLine("wait mem acquisition");
+  while(getState().memMode&RET);
+}
+
+static bool checkCode(const uint8_t * prog){
+  const uint8_t* src=(uint8_t*)&subCodeStart;
+  uint16_t size=&subCodeEnd-&subCodeStart;
+  bool success=true;
+  for (uint16_t i=0;i<size;i++){
+    if (prog[i]!=src[i]){
+      success=false;
+      break;
+    }
+  }
+  return success;
+}
+
+
 
 
 static void testWithSub(){
   char buffer[33];
   uint8_t status=0;
-  uint16_t memMode;
 
   stopSubCpu();
   printActionLine("sub upload");
@@ -255,35 +322,33 @@ static void testWithSub(){
   memcpy((void*)(OFFSET+0x20000),&subCodeStart,&subCodeEnd-&subCodeStart);
   
   
-  *MAIN_MEMMODE= DMNA;
-  startCpu();
-    
-
-
+  startSubCpuWithMem();
   
   printActionLine("sub word ram test");
   sendCmd(CMD_TESTWORDRAM);
 
   do{
-    status=getStatus();    
+    status=getState().status;    
   }while(status!=STATUS_PASSED && status!=STATUS_ERROR);
-
-  sprintf(buffer,"SUB WORD      %s",status==STATUS_PASSED?"ok":"bad");
-  VDP_drawText(buffer, 0, 7);
-  VDP_waitVSync();
-
-
   
+  printFirstResult(ROW_SUBWORD,"SUB WORD",status==STATUS_PASSED);
+  
+  printActionLine("sub word zero filling");
+  sendCmd(CMD_WORDZEROFILLING);
+  do{
+    status=getState().status;    
+  }while(status!=STATUS_PASSED && status!=STATUS_ERROR);
+  printResult(ROW_SUBWORD,COLUMN_SECOND,status==STATUS_PASSED);
+  
+    
   printActionLine("sub backup ram test");
   sendCmd(CMD_TESTBACKUPRAM);
 
   do{
-    status=getStatus();      
+    status=getState().status;      
   }while(status!=STATUS_PASSED && status!=STATUS_ERROR);
     
-  sprintf(buffer,"SUB BACKUP    %s",status==STATUS_PASSED?"ok":"bad");
-  VDP_drawText(buffer, 0, 8);
-  VDP_waitVSync();
+  printFirstResult(ROW_SUBBACKUP,"SUB BACKUP",status==STATUS_PASSED);
 
   
   for (uint8_t bank=0;bank<2;bank++){
@@ -293,58 +358,48 @@ static void testWithSub(){
     write128K((uint8_t*)(OFFSET+0x200000),7+bank);
   }
   
- for (uint8_t bank=0;bank<2;bank++){
-   bool success;
-   askBank(bank);
-   sprintf(buffer,"1M - check bank %02x",bank);
-   printActionLine(buffer);
-   success=read128k((uint8_t*)(OFFSET+0x200000),7+bank);
-   sprintf(buffer,"1M - BANK %01x   %s",bank,success?"ok":"bad");
-   VDP_drawText(buffer, 0, 9+bank);
- }
+  for (uint8_t bank=0;bank<2;bank++){
+    bool success;
+    askBank(bank);
+    sprintf(buffer,"1M - check bank %02x",bank);
+    printActionLine(buffer);
+    success=read128k((uint8_t*)(OFFSET+0x200000),7+bank);
+    sprintf(buffer,"1M - BANK %01x",bank);    
+    printFirstResult(9+bank,buffer,success);
+  }
 
  
 
   stopSubCpu();
   
  
- printActionLine("verify code");
- const uint8_t* prog=(uint8_t*)(OFFSET+0x20000);
- const uint8_t* src=(uint8_t*)&subCodeStart;
- uint16_t size=&subCodeEnd-&subCodeStart;
- bool success=true;
- for (uint16_t i=0;i<size;i++){
-   if (prog[i]!=src[i]){
-     success=false;
-     break;
-   }
- }
+  printActionLine("verify code");
+  bool success=checkCode((uint8_t*)(OFFSET+0x20000));
+  printFirstResult(ROW_CODE,"VERIFY CODE",success);
 
- sprintf(buffer,"VERIFY CODE   %s",success?"ok":"bad");
- VDP_drawText(buffer, 0, 11);
-
- printActionLine("start sub cpu");
- *MAIN_RESETHALT=(0<<6)|SRES;
- while( (*MAIN_RESETHALT&SBRQ)!=0);
- 
- printActionLine("set 2M mode");
- sendCmd(CMD_2MMODE);
-
- 
-
- 
-  do{
-    memMode=*MAIN_MEMMODE;
-  }while( (memMode&MODE)!=0);
+  startSubCpuWithMem();
   
+  printActionLine("sub copy prog to word");
+  sendCmd(CMD_PROGTOWORD);
+
+  while(getState().status!=STATUS_CHECKREQ);
+     
+  printActionLine("get 2M");
+  sendCmd(CMD_GIVE2M);
+  while((getState().memMode&RET)==0);
+
+  printActionLine("checking prog to word copy");
+  success=checkCode((uint8_t*)(OFFSET+0x200000));
+  printResult(ROW_CODE,COLUMN_SECOND,success);
+
+  memToSub();
+
   printActionLine("sub init c");
   
   sendCmd(CMD_INITC);
+  while(getState().status!=STATUS_C_OK);
 
-  do{
-    status=getStatus();
-  }while(status!=STATUS_C_OK);
-
+  
   printActionLine("sub intr run prog");
 
   sendCmd(CMD_WAITINTERRUPT);
@@ -352,7 +407,7 @@ static void testWithSub(){
   (*MAIN_RESETHALT)|=0x8100;
   printActionLine("sub intr show");  
   while(true){
-    status=getStatus();
+    status=getState().status;
     sprintf(buffer,"INTERRUPT 2   %s",(*MAIN_COMMUNICATION)&0x20?"yes":"no ");
     VDP_drawText(buffer, 0, 12);    
     VDP_waitVSync();
@@ -369,7 +424,7 @@ static void testWithSub(){
 int main()
 {
 
-  testMainOnly();
+  //testMainOnly();
   testWithSub();
   
 }

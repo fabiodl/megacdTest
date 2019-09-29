@@ -4,11 +4,15 @@
         .global give2M
         .global to2MMode
         .global testBackupRam
+        .global copyProgToWord
+        .global testZeroFilling
+        
 .set SUB_COMM_STATUS,0x0FF800F
 .set SUB_MEMORYMODE,0xFF8002
-.set STATUS_FILLING,1
-.set STATUS_CHECKING,2
-.set STATUS_PASSED,3
+.set STATUS_FILLING,0x01
+.set STATUS_CHECKING,0x02
+.set STATUS_PASSED,0x03
+.set STATUS_CHECKREQ,0x09        
 .set STATUS_ERROR,0x0E        
 
 .set RET,1                
@@ -66,10 +70,12 @@ giveBank1:
 
 to2MMode:
         move.w #0,SUB_MEMORYMODE /*2M mode, to SUB*/
+        move.b #0x0C,SUB_COMM_STATUS
         bra testManager
 
 give2M:
         move.w #RET,SUB_MEMORYMODE /*2M mode, to MAIN*/
+        move.b #0x0D,SUB_COMM_STATUS
         bra testManager
         
 
@@ -107,6 +113,39 @@ brNoReadReset:
         cmp.l #0xFE4001,%a0
         bne brReadNext
         move.b #STATUS_PASSED,SUB_COMM_STATUS        
+        bra testManager
+
+        
+copyProgToWord:
+        move.b #STATUS_FILLING,SUB_COMM_STATUS
+        move.l #0x000000,%a0
+        move.l #0x080000,%a1
+cppwNext:       
+        move.l (%a0)+,(%a1)+
+        cmp.l  #0x0C0000,%a1
+        bne cppwNext
+        move.b #STATUS_CHECKREQ,SUB_COMM_STATUS
+        bra testManager
+        
+testZeroFilling:
+        move.b #STATUS_FILLING,SUB_COMM_STATUS
+        move.l #0x080000,%a0
+        move.w #0,%d0
+zeroNext:
+        move.w %d0,(%a0)+
+        cmp.l  #0x0C0000,%a0
+        bne zeroNext
+        move.b #STATUS_CHECKING,SUB_COMM_STATUS
+        move.l #0x080000,%a0
+checkZeroNext:  
+        cmp.w #0,(%a0)+
+        bne zeroIsBad
+        cmp.l  #0x0C0000,%a0
+        bne checkZeroNext
+        move.b #STATUS_PASSED,SUB_COMM_STATUS
+        bra testManager        
+zeroIsBad:
+        move.b #STATUS_ERROR,SUB_COMM_STATUS
         bra testManager
 
         
