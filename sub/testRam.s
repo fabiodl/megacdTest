@@ -5,7 +5,8 @@
         .global to2MMode
         .global testBackupRam
         .global copyProgToWord
-        .global testZeroFilling
+        .global testWordZeroFilling
+        .global testWordFFFilling
         
 .set SUB_COMM_STATUS,0x0FF800F
 .set SUB_MEMORYMODE,0xFF8002
@@ -127,24 +128,32 @@ cppwNext:
         move.b #STATUS_CHECKREQ,SUB_COMM_STATUS
         bra testManager
         
-testZeroFilling:
+testWordZeroFilling:
+        move.w #0,%d0
+        bra testWordFilling
+
+
+testWordFFFilling:
+        move.w #0xFFFF,%d0
+        bra testWordFilling
+
+testWordFilling:        
         move.b #STATUS_FILLING,SUB_COMM_STATUS
         move.l #0x080000,%a0
-        move.w #0,%d0
-zeroNext:
+fillWNext:
         move.w %d0,(%a0)+
         cmp.l  #0x0C0000,%a0
-        bne zeroNext
+        bne fillWNext
         move.b #STATUS_CHECKING,SUB_COMM_STATUS
         move.l #0x080000,%a0
-checkZeroNext:  
-        cmp.w #0,(%a0)+
-        bne zeroIsBad
+checkFillWNext:  
+        cmp.w (%a0)+,%d0
+        bne fillWIsBad
         cmp.l  #0x0C0000,%a0
-        bne checkZeroNext
+        bne checkFillWNext
         move.b #STATUS_PASSED,SUB_COMM_STATUS
         bra testManager        
-zeroIsBad:
+fillWIsBad:
         move.b #STATUS_ERROR,SUB_COMM_STATUS
         bra testManager
 

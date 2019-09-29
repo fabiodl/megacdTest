@@ -35,6 +35,7 @@ volatile uint8_t* MAIN_COMM_STATUS=      (volatile uint8_t*)0x0A1200F;
 #define CMD_WAITINTERRUPT   0x09
 #define CMD_PROGTOWORD      0x0A
 #define CMD_WORDZEROFILLING 0x0B
+#define CMD_WORDFFFILLING   0x0C
 
 #define STATUS_IDLE 0x00
 #define STATUS_FILLING 0x01
@@ -72,7 +73,8 @@ enum{
 
 enum{
      COLUMN_FIRST=14,
-     COLUMN_SECOND=18
+     COLUMN_SECOND=18,
+     COLUMN_THIRD=22
 };
 
 static const char* msgs[]=
@@ -333,12 +335,20 @@ static void testWithSub(){
   
   printFirstResult(ROW_SUBWORD,"SUB WORD",status==STATUS_PASSED);
   
+  printActionLine("sub word FF filling");
+  sendCmd(CMD_WORDFFFILLING);
+  do{
+    status=getState().status;    
+  }while(status!=STATUS_PASSED && status!=STATUS_ERROR);
+  printResult(ROW_SUBWORD,COLUMN_THIRD,status==STATUS_PASSED);
+
   printActionLine("sub word zero filling");
   sendCmd(CMD_WORDZEROFILLING);
   do{
     status=getState().status;    
   }while(status!=STATUS_PASSED && status!=STATUS_ERROR);
   printResult(ROW_SUBWORD,COLUMN_SECOND,status==STATUS_PASSED);
+
   
     
   printActionLine("sub backup ram test");
