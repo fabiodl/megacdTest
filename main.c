@@ -424,7 +424,7 @@ static void testWithSub(){
 int main()
 {
 
-  //testMainOnly();
+  testMainOnly();
   testWithSub();
   
 }
