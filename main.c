@@ -1,6 +1,6 @@
 #include <stdint.h>
 #include <genesis.h>
-
+#include "crc32.h"
 
 
 extern uint8_t subCodeStart,subCodeEnd;
@@ -63,12 +63,27 @@ volatile uint8_t* MAIN_COMM_STATUS=      (volatile uint8_t*)0x0A1200F;
 //#define OFFSET 0x400000
 
 enum{
-     ROW_SUBWORD=7,
-     ROW_SUBBACKUP,
-     ROW_CODE=11,
+     ROW_BUS=0,
+     ROW_BIOS=1,
+     ROW_BIOSNAME=2,
+     ROW_MAINPROG=3,
+     ROW_MAINDATA=7,
+     ROW_SUBWORD=9,
+     ROW_SUBBACKUP=10,
+     ROW_MODE1M=11,
+     ROW_CODE=13,
+     ROW_INTERRUPT2=14,
+     ROW_INTERRUPT3=15,
      ROW_ACTION=21,
      ROW_CMD=22,
      ROW_VARS=23
+};
+
+
+enum{
+     FILLSTART_MAINPROG=0,
+     FILLSTART_MAINDATA=5,
+     FILLSTART_MODE1M=7
 };
 
 enum{
@@ -112,6 +127,65 @@ const char* getMsg(uint8_t status){
 }
 
 static const char* rotatingBar="|/-\\";
+
+
+struct KnownCrc{
+  uint32_t crc;
+  const char* name;
+};
+
+static const struct KnownCrc knownCrcs[] =
+  {
+   { 0x0507b590,"G:MCDMod2V2.00(E)(Mar1993)[!]" },
+   { 0x0f15d7e6,"N:megacd-2-e" },
+   { 0x14dcbba9,"N:MegaCD(American)" },
+   { 0x170ca9da,"G:CDXProV1.8I(Unl)" },
+   { 0x2a4b82b5,"G:MCDMod2V2.00W(E)(Jun1993)[b2]" },
+   { 0x2b19972f,"SR:WONDERMEGA-G303.BIN" },
+   { 0x2e49d72c,"G:SCDMod2V2.11(U)[!]" },
+   { 0x2ea250c0,"SR:MCDv1.00o(1991)(JP)(en-ja)" },
+   { 0x340b4be4,"G:SCDMod2V2.00(U)[a1]" },
+   { 0x39d897a9,"N:SCD_Art_Test" },
+   { 0x39ebc967,"N:scd_110s" },
+   { 0x433e44b5,"N:megacd-2-u" },
+   { 0x4374808d,"N:MCDMod2V2.00c(J)(Dec1992)[b1]" },
+   { 0x4a940d4a,"G:SCDXV2.21(U)[b1]" },
+   { 0x4be18ff6,"SR:jp_mcd2_920501" },
+   { 0x4d5cb8da,"G:MCDMod2V2.00W(E)(Jun1993)[!]" },
+   { 0x4f639d2e,"N:megacd-1-e" },
+   { 0x529ac15a,"G:MCDMod1V1.00(E)[!]" },
+   { 0x550f30bb,"G:MCDMod1V1.00(J)[!]" },
+   { 0x58c35bd3,"N:megacd-1-u" },
+   { 0x58c94b97,"G:SCDMod1V1.10(U)[b1]" },
+   { 0x62108fff,"G:MCDMod2V2.00(E)(Mar1993)[b2]" },
+   { 0x6567ef38,"G:VisualSceneSCDImage(J)[b1]" },
+   { 0x72f0d6db,"N:cdx!(robcd)(2013.08.3012.30)" },
+   { 0x79f85384,"G:MCDMod1V1.005(J)" },
+   { 0x7f7677cc,"G:SCDMod2V2.00WEmuHoax(Hack)" },
+   { 0x8052c7a0,"SR:MPR-15768-T" },
+   { 0x882fb4e5,"N:sonicdreams" },
+   { 0x8af65f58,"G:SCDMod2V2.00(U)" },
+   { 0x9b1ffc6f,"G:MCDMod2V2.00(E)(Mar1993)[b1]" },
+   { 0x9bce40b2,"SR:MCDv1.00g(1991)(JP)(en-ja)" },
+   { 0x9d2da8f2,"G:MCDMod1V1.01(J)(Nov1991)" },
+   { 0x9f6f6276,"G:SCDMod2V2.00W(U)" },
+   { 0xaacb851e,"SR:eu_mmg_930916" },
+   { 0xb0519ed3,"G:SCDMod2V2.11(U)[b1]" },
+   { 0xb501ded0,"SR:WONDERMEGA-G303_BAD_DUMP.BIN" },
+   { 0xba7bf31d,"G:MCDMod2V2.00C(J)(Dec1992)[ab1]" },
+   { 0xc6d10268,"G:SCDMod1V1.10(U)" },
+   { 0xce60984e,"G:SCD68K(Hack)" },
+   { 0xd21fe71d,"SR:jp_wmg_920206.BIN" },
+   { 0xd344f125,"G:MCDMod2V2.00W(E)(Jun1993)[b1]" },
+   { 0xd48c44b5,"G:SCDXV2.21(U)[!]" },
+   { 0xd640553e,"G:CDXProV1.8I(Unl)[o1]" },
+   { 0xd7423eb5,"N:cdx!(waltjag)(2013.08.2713.37)" },
+   { 0xdd6cc972,"G:MCDMod2V2.00C(J)(Dec1992)[a1]" },
+   { 0xe7e3afe2,"G:SCDMod1V1.00(U)" },
+   { 0xe7f3a492,"G:CDXProV1.70(Unl)[b1]" },
+   { 0xf116793c,"G:MCDMod2V2.00C(J)(Dec1992)" },
+   { 0xf18dde5b,"G:MCDMod1V1.00l(J)" },
+  };
 
 
 struct State{
@@ -216,47 +290,84 @@ void printResult(uint8_t row,uint8_t col,bool success){
   VDP_waitVSync();
 }
 
+
+/*void printMyself(){
+  for (uint8_t i=0;i<9;i++){
+    for (uint8_t j=0;j<0x10;j++){
+      sprintf(buffer,"%02x",*(uint8_t*)(16*i+j));
+      VDP_drawText(buffer,j*2, i);
+    }
+  }
+}
+*/
+
+
 void testMainOnly(){
   char buffer[33];  
-  VDP_drawText("req bus", 0, 0);
+  VDP_drawText("req bus", 0, ROW_BUS);
   VDP_waitVSync();
   *MAIN_RESETHALT=SBRQ;
   struct State state;
   do{
     state=getState();
   }while ((!(state.resetHalt&SBRQ))||(state.memMode&DMNA));
-  VDP_drawText("got bus", 14, 0);
-    
+  VDP_drawText("got bus", 14, ROW_BUS);
+
+
+  initCrcTable();
+  VDP_drawText("BIOS CRC32", 0, ROW_BIOS);
+  VDP_waitVSync();
+  uint32_t crc=0;
+  crc32((void*)OFFSET,0x020000,&crc);
+  void* crca=&crc;
+  sprintf(buffer,"%04x%04x",*(uint16_t*)crca,*(((uint16_t*)crca)+1));
+  VDP_drawText(buffer, COLUMN_FIRST, ROW_BIOS);
+  VDP_waitVSync();
+
+  bool found=false;
+  for (uint16_t i=0;i<sizeof(knownCrcs)/sizeof(struct KnownCrc);i++){
+    if (crc==knownCrcs[i].crc){
+      found=true;
+      VDP_drawText(knownCrcs[i].name,0, ROW_BIOSNAME);
+      VDP_waitVSync();
+      break;
+    }
+  }
+  if (!found){
+    VDP_drawText("Unknown BIOS",0, ROW_BIOSNAME);
+  }
+
+
     
   for (uint8_t bank=0;bank<4;bank++){
     *MAIN_MEMMODE=(bank<<6)|RET;
     sprintf(buffer,"PROG BANK %d",bank);
-    VDP_drawText(buffer, 0, bank+1);
+    VDP_drawText(buffer, 0, bank+ROW_MAINPROG);
     VDP_waitVSync();
-    write128K((uint8_t*)(OFFSET+0x20000),bank);
+    write128K((uint8_t*)(OFFSET+0x20000),bank+FILLSTART_MAINPROG);
   }
     
     
-  uint8_t r=5;
+  uint8_t r=0;
   for (uint8_t* x=(uint8_t*)(OFFSET+0x200000);x<(uint8_t*)(OFFSET+0x240000);x+=0x20000){
     sprintf(buffer,"DATA ADDR %x",(uint16_t)((uint32_t)x>>16) );
-    VDP_drawText(buffer, 0, r);
+    VDP_drawText(buffer, 0, r+ROW_MAINDATA);
     VDP_waitVSync();
-    write128K(x,r);    
+    write128K(x,r+FILLSTART_MAINDATA);
     r++;
   }
     
     
   for (uint8_t bank=0;bank<4;bank++){
     *MAIN_MEMMODE=(bank<<6)|RET;
-    bool success=read128k((uint8_t*)(OFFSET+0x20000),bank);
-    printResult(bank+1,COLUMN_FIRST,success);    
+    bool success=read128k((uint8_t*)(OFFSET+0x20000),bank+FILLSTART_MAINPROG);
+    printResult(bank+ROW_MAINPROG,COLUMN_FIRST,success);
   }
-  r=5;
+  r=0;
     
   for (uint8_t* x=(uint8_t*)(OFFSET+0x200000);x<(uint8_t*)(OFFSET+0x240000);x+=0x20000){
-    bool success=read128k(x,r);
-    printResult(r,COLUMN_FIRST,success);    
+    bool success=read128k(x,r+FILLSTART_MAINDATA);
+    printResult(r+ROW_MAINDATA,COLUMN_FIRST,success);
     r++;
   }
             
@@ -365,7 +476,7 @@ static void testWithSub(){
     askBank(bank);
     sprintf(buffer,"1M - fill bank %02x",bank);
     printActionLine(buffer);
-    write128K((uint8_t*)(OFFSET+0x200000),7+bank);
+    write128K((uint8_t*)(OFFSET+0x200000),bank+FILLSTART_MODE1M);
   }
   
   for (uint8_t bank=0;bank<2;bank++){
@@ -373,9 +484,9 @@ static void testWithSub(){
     askBank(bank);
     sprintf(buffer,"1M - check bank %02x",bank);
     printActionLine(buffer);
-    success=read128k((uint8_t*)(OFFSET+0x200000),7+bank);
+    success=read128k((uint8_t*)(OFFSET+0x200000),bank+FILLSTART_MODE1M);
     sprintf(buffer,"1M - BANK %01x",bank);    
-    printFirstResult(9+bank,buffer,success);
+    printFirstResult(ROW_MODE1M+bank,buffer,success);
   }
 
  
@@ -419,10 +530,10 @@ static void testWithSub(){
   while(true){
     status=getState().status;
     sprintf(buffer,"INTERRUPT 2   %s",(*MAIN_COMMUNICATION)&0x20?"yes":"no ");
-    VDP_drawText(buffer, 0, 12);    
+    VDP_drawText(buffer, 0, ROW_INTERRUPT2);
     VDP_waitVSync();
     sprintf(buffer,"INTERRUPT 3   %s",(*MAIN_COMMUNICATION)&0x40?"yes":"no ");
-    VDP_drawText(buffer, 0, 13);    
+    VDP_drawText(buffer, 0, ROW_INTERRUPT3);
   }
 
 
@@ -436,5 +547,4 @@ int main()
 
   testMainOnly();
   testWithSub();
-  
 }
