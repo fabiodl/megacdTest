@@ -350,7 +350,7 @@ void testMainOnly(){
     
   uint8_t r=0;
   for (uint8_t* x=(uint8_t*)(OFFSET+0x200000);x<(uint8_t*)(OFFSET+0x240000);x+=0x20000){
-    sprintf(buffer,"DATA ADDR %x",(uint16_t)((uint32_t)x>>16) );
+    sprintf(buffer,"WORD ADDR %x",(uint16_t)((uint32_t)x>>16) );
     VDP_drawText(buffer, 0, r+ROW_MAINDATA);
     VDP_waitVSync();
     write128K(x,r+FILLSTART_MAINDATA);
